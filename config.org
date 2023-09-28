@@ -26,11 +26,15 @@ Emacs breaks certain modes when it has line-numbers-mode enabled, (like docview 
   (global-display-line-numbers-mode 1)
   ;;(global-display-fill-column-indicator-mode 1)
   (setq-default display-line-numbers-type 'relative
-  display-line-numbers-current-absolute t
-  display-line-numbers-width 4
-  display-line-numbers-widen t)
-  (add-hook 'text-mode-hook #'display-line-numbers-mode)
+                display-line-numbers-current-absolute t
+                display-line-numbers-width 4
+                display-line-numbers-widen t)
   (add-hook 'prog-mode-hook #'display-line-numbers-mode)
+  (defun my-turn-off-line-numbers ()
+    "Disable line numbering in the current buffer."
+    (display-line-numbers-mode -1))
+
+  (add-hook 'pdf-view-mode-hook #'my-turn-off-line-numbers)
 #+END_SRC
 ** Show parent parentheses
 #+BEGIN_SRC emacs-lisp
@@ -163,6 +167,8 @@ Emacs breaks certain modes when it has line-numbers-mode enabled, (like docview 
     (evil-global-set-key 'motion "j" 'evil-next-visual-line)
     (evil-global-set-key 'motion "k" 'evil-previous-visual-line)
 
+    (evil-set-undo-system 'undo-redo)
+
     (evil-set-initial-state 'messages-buffer-mode 'normal)
     (evil-set-initial-state 'dashboard-mode 'normal))
 
@@ -203,12 +209,13 @@ Bring nice icons to emacs
 
 ** Modeline
 #+BEGIN_SRC emacs-lisp
-(use-package all-the-icons)
-
-(use-package doom-modeline
-  :straight t
-  :init (doom-modeline-mode 1)
-  :custom ((doom-modeline-height 15)))
+  (use-package nerd-icons
+    :straight t
+    )
+  (use-package doom-modeline
+    :straight t
+    :init (doom-modeline-mode 1)
+    :custom ((doom-modeline-height 15)))
 #+END_SRC
 
 ** Which key 
@@ -274,6 +281,15 @@ One of the main selling points of Emacs! Org Mode!
          (hide-mode-line-mode))))  
 #+END_SRC
 
+** Pretty org-bullets 
+#+BEGIN_SRC emacs-lisp
+
+(use-package org-bullets
+  :straight t
+  :hook (org-mode . org-bullets-mode)
+  :custom
+  (org-bullets-bullet-list '("◉" "○" "●" "○" "●" "○" "●")))
+#+END_SRC
 ** Ivy and counsel 
 #+BEGIN_SRC emacs-lisp
 (use-package ivy
@@ -374,22 +390,23 @@ Make Dashboard open as the default instead of scratch
 #+BEGIN_SRC emacs-lisp
 (setq initial-buffer-choice (lambda () (get-buffer "*dashboard*")))
 #+END_SRC
+
 ** Initialize =rainbow-mode=
 *** Code
 #+BEGIN_SRC emacs-lisp
-(use-package rainbow-mode
-  :straight t)
-;; To enable in all programming-related modes (Emacs 24+):
-(add-hook 'prog-mode-hook 'rainbow-delimiters-mode)
+  (use-package rainbow-mode
+    :straight t
+    :hook
+    ((prog-mode . rainbow-mode)))
 #+END_SRC
 ** Initialize =rainbow-delimeters=
 *** Code
 #+BEGIN_SRC emacs-lisp
-(use-package rainbow-delimiters
-  :straight t)
+  (use-package rainbow-delimiters
+    :straight (rainbow-delimiters :type git :host github :repo "Fanael/rainbow-delimiters")
+    :hook
+    ((prog-mode . rainbow-delimiters-mode)))
 #+END_SRC
-
-
 ** Plant-UML
 
 #+BEGIN_SRC emacs-lisp
@@ -405,35 +422,50 @@ Make Dashboard open as the default instead of scratch
 #+END_SRC
 
 * programming-related
-** LSP
-#+BEGIN_SRC emacs-lisp
-  (defun efs/lsp-mode-setup ()
-    (setq lsp-headerline-breadcrumb-segments '(path-up-to-project file symbols))
-    (lsp-headerline-breadcrumb-mode))
-
-  (use-package lsp-mode
-    :straight t
-    :commands (lsp lsp-deferred)
-    :hook (lsp-mode . efs/lsp-mode-setup)
-    :init
-    (setq lsp-keymap-prefix "C-c l")  ;; Or 'C-l', 's-l'
-    :config
-    (lsp-enable-which-key-integration t))
-  (use-package lsp-ui
-    :straight t
-    :hook (lsp-mode . lsp-ui-mode)
-    :custom
-    (lsp-ui-doc-position 'bottom))
-
-(use-package typescript-mode
-  :straight t
-  :mode "\\.js\\'"
-  :mode "\\.ts\\'"
-  :hook (typescript-mode . lsp-deferred)
-  :config
-  (setq typescript-indent-level 2))
-#+END_SRC
-
+** Initialize =eglot=
+*** Code
+    #+begin_src emacs-lisp
+      (use-package eglot
+        :straight nil
+        :custom
+        (eglot-autoshutdown t)
+        (eglot-extend-to-xref t)
+        (eglot-ignored-server-capabilities '(:documentHighlightProvider))
+        :hook
+        ((typescript-mode . eglot-ensure)
+         (tsx-ts-mode . eglot-ensure)
+         (typescript-ts-mode . eglot-ensure)
+         (c-ts-mode . eglot-ensure)
+         (c-mode . eglot-ensure)
+         (c++-mode . eglot-ensure)
+         (c++-ts-mode . eglot-ensure)
+         (js-mode . eglot-ensure)
+         (js-ts-mode . eglot-ensure)
+         (python-mode . eglot-ensure)
+         (python-ts-mode . eglot-ensure)
+         (java-mode . eglot-ensure)
+         (java-ts-mode . eglot-ensure))
+        :config
+        (add-to-list 'eglot-server-programs '(typescript-ts-mode . ("typescript-language-server" "--stdio")))
+        (add-to-list 'eglot-server-programs '(tsx-ts-mode . ("typescript-language-server" "--stdio")))
+        :bind (:map eglot-mode-map
+                    ("C-c l r"   . eglot-rename)
+                    ("C-c l f f" . eglot-format)
+                    ("C-c l f b" . eglot-format-buffer)
+                    ("C-c l a a" . eglot-code-actions)
+                    ("C-c l a q" . eglot-code-action-quickfix)
+                    ("C-c l a e" . eglot-code-action-extract)
+                    ("C-c l a i" . eglot-code-action-inline)
+                    ("C-c l a r" . eglot-code-action-rewrite)))
+    #+end_src
+** Initialize =ripgrep=
+*** Code
+    #+begin_src emacs-lisp
+      
+      (use-package ripgrep
+        :straight t
+       )
+    #+end_src
 ** Company
 #+BEGIN_SRC emacs-lisp
 (use-package company
@@ -507,12 +539,3 @@ Make Dashboard open as the default instead of scratch
 
 #+END_SRC
 
-** Pretty org-bullets 
-#+BEGIN_SRC emacs-lisp
-
-(use-package org-bullets
-  :straight t
-  :hook (org-mode . org-bullets-mode)
-  :custom
-  (org-bullets-bullet-list '("◉" "○" "●" "○" "●" "○" "●")))
-#+END_SRC
